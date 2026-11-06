@@ -1,0 +1,41 @@
+# DUMMY ONLY — no credentials, source checkout, signing or uploads.
+name: SpamBack immutable-source admission (dummy)
+on:
+  issues:
+    types: [opened]
+permissions: {}
+concurrency:
+  group: spamback-one-shot-no-secret-admission
+  cancel-in-progress: false
+jobs:
+  no_secret_admission:
+    if: >-
+      github.repository == 'SpamBackReleaseControl/SpamBack-Release-Controller' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'issues' &&
+      github.event.action == 'opened' &&
+      github.actor == 'Spamback' &&
+      github.event.issue.user.login == 'Spamback' &&
+      github.event.issue.title == 'SpamBack SOURCE ADMISSION DUMMY' &&
+      github.run_attempt == 1
+    environment: TestFlight-Approval
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      SOURCE_REPO_ID: '1423743835'
+      SOURCE_REPO: 'Spamback/SpamBack-AI'
+      SOURCE_COMMIT: '13e66d710dc9cda3a76a85c88619336c8ee9f354'
+      SOURCE_TREE: '81ec00a5c210890c1e3ecfa6b70cb2f198d8c8f3'
+      SOURCE_RELEASE_ALLOWED: 'false'
+    steps:
+      - name: Refuse production release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SOURCE_REPO_ID" = '1423743835'
+          test "$SOURCE_REPO" = 'Spamback/SpamBack-AI'
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$SOURCE_TREE" =~ ^[a-f0-9]{40}$ ]]
+          test "$SOURCE_RELEASE_ALLOWED" = 'false'
+          echo 'Dummy approval only. NO RELEASE.'
