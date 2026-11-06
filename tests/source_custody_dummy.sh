@@ -21,5 +21,17 @@ if [[ "${INJECT_FAILURE:-}" == after_key_removed ]]; then exit 9; fi
 env -i PATH="$PATH" HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 git -C "$work/source" checkout -q --detach "$expected_commit" 2>/dev/null || exit 10
 [[ "$(env -i PATH="$PATH" HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$work/source" rev-parse HEAD)" == "$expected_commit" ]] || exit 11
 [[ "$(env -i PATH="$PATH" HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$work/source" rev-parse 'HEAD^{tree}')" == "$expected_tree" ]] || exit 12
+# Check source objects and workspace before even the dummy completion marker.
+# Each Git invocation runs in an isolated environment and never sees the dummy key.
+git_safe() {
+  env -i PATH="$PATH" HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 \
+    GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 \
+    git -C "$work/source" "$@"
+}
+[[ "$(git_safe rev-parse --show-object-format)" == sha1 ]] || exit 14
+[[ "$(git_safe rev-parse --is-shallow-repository)" == false ]] || exit 15
+[[ -z "$(git_safe status --porcelain=v1 --untracked-files=all)" ]] || exit 16
+[[ -z "$(git_safe ls-files -v | grep -Ev '^H ' || true)" ]] || exit 17
+[[ -z "$(git_safe ls-files --stage | grep -E '^(120000|160000) ' || true)" ]] || exit 18
 if [[ "${INJECT_FAILURE:-}" == after_verify ]]; then exit 13; fi
 printf 'LOCAL_DUMMY_MATCHED_NO_RELEASE\n'
