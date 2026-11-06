@@ -1,0 +1,71 @@
+# INACTIVE REVIEW CANDIDATE, deliberately outside .github/workflows.
+# No signing, distribution, private source artifacts, or upload.
+name: SpamBack private-source read-only qualification (NO RELEASE)
+on:
+  issues:
+    types: [opened]
+permissions: {}
+concurrency:
+  group: spamback-private-source-readonly-qualification
+  cancel-in-progress: false
+jobs:
+  qualification_only:
+    if: >-
+      github.repository == 'SpamBackReleaseControl/SpamBack-Release-Controller' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'issues' &&
+      github.event.action == 'opened' &&
+      github.actor == 'Spamback' &&
+      github.event.issue.user.login == 'Spamback' &&
+      github.event.issue.title == 'SpamBack SOURCE READONLY QUALIFY V2' &&
+      github.run_attempt == 1
+    environment: TestFlight-Approval
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions: {}
+    steps:
+      - name: Refuse release; inspect exact pinned private source
+        shell: bash
+        env:
+          SPAMBACK_SOURCE_READONLY_DEPLOY_KEY: ${{ secrets.SPAMBACK_SOURCE_READONLY_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          test -n "${SPAMBACK_SOURCE_READONLY_DEPLOY_KEY:-}"
+          work="$(mktemp -d "$RUNNER_TEMP/spamback-owner-source-XXXXXXXX")"
+          trap 'rm -rf -- "$work"' EXIT
+          mkdir -m 700 -- "$work/home"
+          printf '%s\n' "$SPAMBACK_SOURCE_READONLY_DEPLOY_KEY" > "$work/ssh-key"
+          chmod 600 "$work/ssh-key"
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$work/known_hosts"
+          test "$(ssh-keygen -lf "$work/known_hosts" -E sha256 | awk '{print $2}')" = 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU'
+          ssh_cmd="ssh -F /dev/null -i $work/ssh-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$work/known_hosts -o GlobalKnownHostsFile=/dev/null -o BatchMode=yes -o ForwardAgent=no"
+          # The only credential-bearing Git operation: clone without checkout.
+          env -i PATH="$PATH" HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$ssh_cmd" git clone --quiet --no-checkout -- 'git@github.com:Spamback/SpamBack-AI.git' "$work/source"
+          rm -f -- "$work/ssh-key"
+          unset SPAMBACK_SOURCE_READONLY_DEPLOY_KEY ssh_cmd
+          source_commit='13e66d710dc9cda3a76a85c88619336c8ee9f354'
+          source_tree='81ec00a5c210890c1e3ecfa6b70cb2f198d8c8f3'
+          safe_git() {
+            env -i PATH="$PATH" HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 git -C "$work/source" "$@"
+          }
+          safe_git -c core.hooksPath=/dev/null checkout --quiet --detach "$source_commit"
+          test "$(safe_git rev-parse --verify 'HEAD^{commit}')" = "$source_commit"
+          test "$(safe_git rev-parse --verify 'HEAD^{tree}')" = "$source_tree"
+          test "$(safe_git rev-parse --show-object-format)" = sha1
+          test "$(safe_git rev-parse --is-shallow-repository)" = false
+          # Capture git output separately: command substitution inside test or
+          # grep || true can conceal a failed git process.
+          status_output="$(safe_git status --porcelain=v1 --untracked-files=all)"
+          test -z "$status_output"
+          index_flags="$(safe_git ls-files -v)"
+          test -n "$index_flags"
+          while IFS= read -r line; do
+            case "$line" in 'H '*) ;; *) exit 21 ;; esac
+          done <<< "$index_flags"
+          staged_entries="$(safe_git ls-files --stage)"
+          test -n "$staged_entries"
+          if grep -Eq '^(120000|160000) ' <<< "$staged_entries"; then exit 22; fi
+          # This job never executes application scripts and never uploads.
+          echo 'PRIVATE SOURCE IDENTITY MATCHED; NO RELEASE AUTHORIZED.'
