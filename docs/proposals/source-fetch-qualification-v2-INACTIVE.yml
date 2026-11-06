@@ -55,8 +55,17 @@ jobs:
           test "$(safe_git rev-parse --verify 'HEAD^{tree}')" = "$source_tree"
           test "$(safe_git rev-parse --show-object-format)" = sha1
           test "$(safe_git rev-parse --is-shallow-repository)" = false
-          test -z "$(safe_git status --porcelain=v1 --untracked-files=all)"
-          test -z "$(safe_git ls-files -v | grep -Ev '^H ' || true)"
-          test -z "$(safe_git ls-files --stage | grep -E '^(120000|160000) ' || true)"
+          # Capture git output separately: command substitution inside test or
+          # grep || true can conceal a failed git process.
+          status_output="$(safe_git status --porcelain=v1 --untracked-files=all)"
+          test -z "$status_output"
+          index_flags="$(safe_git ls-files -v)"
+          test -n "$index_flags"
+          while IFS= read -r line; do
+            case "$line" in 'H '*) ;; *) exit 21 ;; esac
+          done <<< "$index_flags"
+          staged_entries="$(safe_git ls-files --stage)"
+          test -n "$staged_entries"
+          if grep -Eq '^(120000|160000) ' <<< "$staged_entries"; then exit 22; fi
           # This job never executes application scripts and never uploads.
           echo 'PRIVATE SOURCE IDENTITY MATCHED; NO RELEASE AUTHORIZED.'
