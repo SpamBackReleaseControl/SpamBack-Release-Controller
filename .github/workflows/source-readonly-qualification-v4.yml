@@ -1,0 +1,111 @@
+# INACTIVE: review copy only. Never install/merge/run without separate approval.
+# Source qualification only; no application execution, artifacts, signing or release.
+name: SpamBack bare-source qualification V4 (NO RELEASE)
+on:
+  issues:
+    types: [opened]
+permissions: {}
+concurrency:
+  group: spamback-source-only-qualification-v4
+  cancel-in-progress: false
+jobs:
+  source_only:
+    if: >-
+      github.repository == 'SpamBackReleaseControl/SpamBack-Release-Controller' &&
+      github.repository_id == '1443482676' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'issues' &&
+      github.event.action == 'opened' &&
+      github.actor_id == '344105751' &&
+      github.event.issue.user.id == 344105751 &&
+      github.event.issue.title == 'SpamBack SOURCE READONLY QUALIFY V4' &&
+      github.run_attempt == 1
+    environment: TestFlight-Approval
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions: {}
+    steps:
+      - name: Inspect pinned bare Git objects; never execute private source
+        shell: bash
+        env:
+          SPAMBACK_SOURCE_READONLY_DEPLOY_KEY: ${{ secrets.SPAMBACK_SOURCE_READONLY_DEPLOY_KEY }}
+        run: |
+          set +x
+          set -euo pipefail
+          exec 2>/dev/null
+          umask 077
+          work=''
+          phase='context'
+          finish() {
+            result=$?
+            trap - EXIT
+            unset SPAMBACK_SOURCE_READONLY_DEPLOY_KEY ssh_cmd private_public
+            if [ -n "$work" ]; then
+              if ! /usr/bin/rm -rf -- "$work"; then result=70; phase='cleanup'; fi
+              if [ -e "$work" ]; then result=70; phase='cleanup'; fi
+            fi
+            if [ "$result" = 0 ]; then
+              printf '%s\n' '{"sourceIdentityVerified":true,"privateKeyRemoved":true,"sourceCodeExecuted":false,"activationReady":false}'
+            else
+              printf 'Source qualification refused during %s; diagnostics withheld; NO RELEASE.\n' "$phase"
+            fi
+            exit "$result"
+          }
+          trap finish EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          trap 'exit 129' HUP
+          test -n "${SPAMBACK_SOURCE_READONLY_DEPLOY_KEY:-}"
+          [[ "${RUNNER_TEMP:-}" =~ ^/[A-Za-z0-9_./-]+$ ]]
+          test -d "$RUNNER_TEMP"
+          test ! -L "$RUNNER_TEMP"
+          work="$(/usr/bin/mktemp -d "$RUNNER_TEMP/spamback-source-XXXXXXXX")"
+          /usr/bin/mkdir -m 700 -- "$work/home"
+          phase='key-identity'
+          printf '%s\n' "$SPAMBACK_SOURCE_READONLY_DEPLOY_KEY" > "$work/ssh-key"
+          unset SPAMBACK_SOURCE_READONLY_DEPLOY_KEY
+          /usr/bin/chmod 600 "$work/ssh-key"
+          private_public="$(/usr/bin/env -i PATH=/usr/bin:/bin HOME="$work/home" /usr/bin/ssh-keygen -y -P '' -f "$work/ssh-key")"
+          fingerprint="$(printf '%s\n' "$private_public" | /usr/bin/ssh-keygen -lf - -E sha256 | /usr/bin/awk '{print $2}')"
+          test "$fingerprint" = 'SHA256:W9I8TvKtQvP497LX1KIRMtJnVds7pEhuqxvt6/ncr/M'
+          unset private_public fingerprint
+          phase='host-identity'
+          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$work/known_hosts"
+          host_fingerprint="$(/usr/bin/ssh-keygen -lf "$work/known_hosts" -E sha256 | /usr/bin/awk '{print $2}')"
+          test "$host_fingerprint" = 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU'
+          ssh_cmd="/usr/bin/ssh -F /dev/null -i $work/ssh-key -o IdentitiesOnly=yes -o IdentityAgent=none -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$work/known_hosts -o GlobalKnownHostsFile=/dev/null -o BatchMode=yes -o ForwardAgent=no -o ConnectTimeout=20"
+          phase='source-fetch'
+          /usr/bin/env -i PATH=/usr/bin:/bin HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$ssh_cmd" /usr/bin/git -c core.hooksPath=/dev/null clone --quiet --bare --no-local -- 'git@github.com:Spamback/SpamBack-AI.git' "$work/source.git" >/dev/null 2>&1
+          phase='key-removal'
+          /usr/bin/rm -f -- "$work/ssh-key"
+          test ! -e "$work/ssh-key"
+          unset ssh_cmd
+          source_commit='56236881f64465408808c0198d23ea3ac367b4f6'
+          source_tree='97aac4f8fac49bd562b9414f0005bcb4feed0458'
+          safe_git() {
+            /usr/bin/env -i PATH=/usr/bin:/bin HOME="$work/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_ATTR_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 /usr/bin/git -c core.hooksPath=/dev/null --git-dir="$work/source.git" "$@"
+          }
+          phase='source-identity'
+          test "$(safe_git rev-parse --is-bare-repository)" = true
+          test "$(safe_git rev-parse --show-object-format)" = sha1
+          test "$(safe_git rev-parse --is-shallow-repository)" = false
+          test "$(safe_git rev-parse --verify "$source_commit^{commit}")" = "$source_commit"
+          test "$(safe_git rev-parse --verify "$source_commit^{tree}")" = "$source_tree"
+          safe_git fsck --strict --no-reflogs >/dev/null 2>&1
+          phase='source-tree'
+          safe_git ls-tree -r -z --full-tree "$source_commit" | /usr/bin/python3 -c '
+          import sys
+          raw = sys.stdin.buffer.read(12000001)
+          if not raw or len(raw) > 12000000 or not raw.endswith(b"\0"): sys.exit(20)
+          entries = raw[:-1].split(b"\0")
+          if len(entries) > 10000: sys.exit(21)
+          for entry in entries:
+              metadata, path = entry.split(b"\t", 1)
+              mode, kind, oid = metadata.split(b" ")
+              if mode not in (b"100644", b"100755") or kind != b"blob": sys.exit(22)
+              name = path.decode("utf-8", "strict")
+              if any(ord(c) < 32 or ord(c) == 127 for c in name) or "\\" in name: sys.exit(23)
+              if any(part in ("", ".", "..", ".git") for part in name.split("/")): sys.exit(24)
+          '
+          # No checkout or application command occurs, even after key removal.
+          phase='complete'
