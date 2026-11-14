@@ -1,0 +1,73 @@
+# INACTIVE REVIEW COPY: installation and ONE run require separate owner approval.
+# Only the existing protected SSH identity; dummy plaintext, no Apple/feed values.
+name: Existing SSH age compatibility (APPROVAL REQUIRED)
+on:
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: spamback-existing-ssh-age-compatibility
+  cancel-in-progress: false
+jobs:
+  compatibility:
+    if: >-
+      github.repository == 'SpamBackReleaseControl/SpamBack-Release-Controller' &&
+      github.repository_id == '1443482676' &&
+      github.event.repository.private == false &&
+      github.ref == 'refs/heads/main' &&
+      github.actor_id == '344105751' &&
+      github.event_name == 'workflow_dispatch' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    environment: TestFlight-Approval
+    timeout-minutes: 3
+    permissions: {}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Stage pinned upstream age and exact compatibility helper without credentials
+        run: |
+          set +x
+          set -euo pipefail
+          umask 077
+          root="$RUNNER_TEMP/spamback-age-compat"
+          mkdir -m 700 "$root"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --max-time 45 \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz \
+            -o "$root/age.tar.gz" 2>/dev/null
+          python3 - <<'PYCODE'
+          import base64,hashlib,os,tarfile
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'spamback-age-compat'
+          archive=root/'age.tar.gz'
+          if hashlib.sha256(archive.read_bytes()).hexdigest() != 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10':
+              raise SystemExit('Pinned age archive refused')
+          with tarfile.open(archive) as source:
+              member=source.getmember('age/age')
+              if not member.isfile() or member.size>30000000:raise SystemExit('Pinned age member refused')
+              raw=source.extractfile(member).read()
+          if hashlib.sha256(raw).hexdigest() != 'eb7dd1b518f0a307c99cd97782623c5321da049154b04acd2d98d21aa7bc9b2c':
+              raise SystemExit('Pinned age executable refused')
+          with (root/'age').open('xb') as out:out.write(raw)
+          (root/'age').chmod(0o500)
+          raw=base64.b64decode('IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJBcHByb3ZlZC1vcGVyYXRpb24gaGVscGVyOiBleGlzdGluZyBTU0ggaWRlbnRpdHksIGR1bW15IHBsYWludGV4dCBvbmx5LgoKTmV2ZXIgZXhlY3V0ZSB3aXRoIGEgcHJvdGVjdGVkIHNlY3JldCB3aXRob3V0IHNlcGFyYXRlIG93bmVyL2Vudmlyb25tZW50IGFwcHJvdmFsLgpObyBuZXR3b3JrLCBzaWduaW5nLCBzb3VyY2UgY2hlY2tvdXQsIEdpdEh1YiB0b2tlbiwgY3JlZGVudGlhbCB0cmFuc2ZlciBvciBhcnRpZmFjdHMuCiIiIgppbXBvcnQgYmFzZTY0CmltcG9ydCBoYXNobGliCmltcG9ydCBqc29uCmltcG9ydCBvcwpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKaW1wb3J0IHN1YnByb2Nlc3MKaW1wb3J0IHRlbXBmaWxlCgpFWFBFQ1RFRCA9ICdTSEEyNTY6VzlJOFR2S3RRdlA0OTdMWDFLSVJNdEpuVmRzN3BFaHVxeHZ0Ni9uY3IvTScKCmRlZiBjaGVjayhhZ2UsIGV4cGVjdGVkPUVYUEVDVEVEKToKICAgIGlkZW50aXR5ID0gb3MuZW52aXJvbi5wb3AoJ1NQQU1CQUNLX1NPVVJDRV9SRUFET05MWV9ERVBMT1lfS0VZJywgJycpCiAgICBpZiBub3QgaWRlbnRpdHkgb3IgbGVuKGlkZW50aXR5KSA+IDMyNzY4OgogICAgICAgIHJhaXNlIFZhbHVlRXJyb3IoJ0lkZW50aXR5IHVuYXZhaWxhYmxlJykKICAgIHdpdGggdGVtcGZpbGUuVGVtcG9yYXJ5RGlyZWN0b3J5KHByZWZpeD0nc3BhbWJhY2stYWdlLWNvbXBhdC0nKSBhcyB0ZW1wOgogICAgICAgIHJvb3Q9UGF0aCh0ZW1wKTtyb290LmNobW9kKDBvNzAwKQogICAgICAgIGtleT1yb290LydpZGVudGl0eScKICAgICAgICBmZD1vcy5vcGVuKGtleSxvcy5PX0NSRUFUfG9zLk9fRVhDTHxvcy5PX1dST05MWSwwbzYwMCkKICAgICAgICB3aXRoIG9zLmZkb3BlbihmZCwndycpIGFzIG91dDpvdXQud3JpdGUoaWRlbnRpdHkrJ1xuJykKICAgICAgICBpZGVudGl0eT1Ob25lCiAgICAgICAgZW52PXsnUEFUSCc6Jy91c3IvYmluOi9iaW4nLCdIT01FJzpzdHIocm9vdCksJ0xBTkcnOidDJywnTENfQUxMJzonQyd9CiAgICAgICAgZGVmIGNvbW1hbmQoYXJndixkYXRhPU5vbmUpOgogICAgICAgICAgICByZXN1bHQ9c3VicHJvY2Vzcy5ydW4oYXJndixpbnB1dD1kYXRhLGNhcHR1cmVfb3V0cHV0PVRydWUsdGltZW91dD0xNSxlbnY9ZW52KQogICAgICAgICAgICBpZiByZXN1bHQucmV0dXJuY29kZTpyYWlzZSBWYWx1ZUVycm9yKCdDb21wYXRpYmlsaXR5IHN1YnByb2Nlc3MgcmVmdXNlZCcpCiAgICAgICAgICAgIHJldHVybiByZXN1bHQuc3Rkb3V0CiAgICAgICAgcHVibGljPWNvbW1hbmQoWycvdXNyL2Jpbi9zc2gta2V5Z2VuJywnLXknLCctUCcsJycsJy1mJyxzdHIoa2V5KV0pLnN0cmlwKCkKICAgICAgICBmaWVsZHM9cHVibGljLnNwbGl0KCkKICAgICAgICBpZiBsZW4oZmllbGRzKTwyIG9yIGZpZWxkc1swXSBub3QgaW4gKGInc3NoLWVkMjU1MTknLGInc3NoLXJzYScpOgogICAgICAgICAgICByYWlzZSBWYWx1ZUVycm9yKCdVbnN1cHBvcnRlZCBwdWJsaWMgaWRlbnRpdHkgdHlwZScpCiAgICAgICAgIyBTU0ggY29tbWVudHMgYXJlIG9wdGlvbmFsIG1ldGFkYXRhOyBuZXZlciBsb2cgb3IgcGFzcyB0aGVtIG9ud2FyZC4KICAgICAgICBwdWJsaWM9YicgJy5qb2luKGZpZWxkc1s6Ml0pCiAgICAgICAgcmF3PWJhc2U2NC5iNjRkZWNvZGUoZmllbGRzWzFdLHZhbGlkYXRlPVRydWUpCiAgICAgICAgZmluZ2VycHJpbnQ9J1NIQTI1NjonK2Jhc2U2NC5iNjRlbmNvZGUoaGFzaGxpYi5zaGEyNTYocmF3KS5kaWdlc3QoKSkuZGVjb2RlKCkucnN0cmlwKCc9JykKICAgICAgICBpZiBmaW5nZXJwcmludCAhPSBleHBlY3RlZDpyYWlzZSBWYWx1ZUVycm9yKCdSZWNpcGllbnQgaWRlbnRpdHkgbWlzbWF0Y2gnKQogICAgICAgIGlmIGNvbW1hbmQoW2FnZSwnLS12ZXJzaW9uJ10pLnN0cmlwKCkgIT0gYid2MS4zLjInOnJhaXNlIFZhbHVlRXJyb3IoJ1VuZXhwZWN0ZWQgYWdlIHZlcnNpb24nKQogICAgICAgIHBsYWludGV4dD1iJ1NwYW1CYWNrIGFnZSBjb21wYXRpYmlsaXR5OiBESVNQT1NBQkxFIERVTU1ZIE9OTFlceDAwXHhmZlxuJwogICAgICAgIGNpcGhlcnRleHQ9Y29tbWFuZChbYWdlLCctcicscHVibGljLmRlY29kZSgpXSxwbGFpbnRleHQpCiAgICAgICAgcmVjb3ZlcmVkPWNvbW1hbmQoW2FnZSwnLWQnLCctaScsc3RyKGtleSldLGNpcGhlcnRleHQpCiAgICAgICAgaWYgcmVjb3ZlcmVkICE9IHBsYWludGV4dDpyYWlzZSBWYWx1ZUVycm9yKCdEdW1teSByb3VuZHRyaXAgbWlzbWF0Y2gnKQogICAgICAgICMgS2V5IGlzIHVubGlua2VkIGJlZm9yZSBlbWl0dGluZyBldmVuIG5vbi1zZWNyZXQgZXZpZGVuY2U7IHRlbXAgY2xlYW51cAogICAgICAgICMgYWxzbyBydW5zIG9uIGV2ZXJ5IGV4Y2VwdGlvbi4gVGhpcyBpcyBkZWxldGlvbiwgbm90IFNTRCBzZWN1cmUgZXJhc2UuCiAgICAgICAga2V5LnVubGluaygpCiAgICAgICAgcmV0dXJuIHsnc2NoZW1hJzoxLCdyZWNpcGllbnRfZmluZ2VycHJpbnRfbWF0Y2hlZCc6VHJ1ZSwKICAgICAgICAgICAgICAgICdzc2hfdHlwZSc6ZmllbGRzWzBdLmRlY29kZSgpLCdyZWNpcGllbnRfcHVibGljX2tleSc6cHVibGljLmRlY29kZSgpLAogICAgICAgICAgICAgICAgJ2FnZV92ZXJzaW9uJzondjEuMy4yJywKICAgICAgICAgICAgICAgICdkdW1teV9yb3VuZHRyaXBfcGFzc2VkJzpUcnVlLCdhcHBsZV9vcl9mZWVkX2NyZWRlbnRpYWxzX3VzZWQnOkZhbHNlLAogICAgICAgICAgICAgICAgJ2V4aXN0aW5nX3Byb3RlY3RlZF9zc2hfaWRlbnRpdHlfdXNlZCc6VHJ1ZSwKICAgICAgICAgICAgICAgICd0cmFuc2Zlcl9wZXJmb3JtZWQnOkZhbHNlLCdrZXlfYXV0aG9yaXphdGlvbl9jaGFuZ2VkJzpGYWxzZX0KCmRlZiBtYWluKCk6CiAgICB0cnk6CiAgICAgICAgcmVzdWx0PWNoZWNrKG9zLmVudmlyb25bJ1NQQU1CQUNLX0FHRV9CSU5BUlknXSkKICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdCgnRXhpc3RpbmcgU1NIIGFnZSBjb21wYXRpYmlsaXR5IHJlZnVzZWQ7IHNlbnNpdGl2ZSBkZXRhaWxzIHN1cHByZXNzZWQuJykgZnJvbSBOb25lCiAgICBwcmludChqc29uLmR1bXBzKHJlc3VsdCxzb3J0X2tleXM9VHJ1ZSkpCgppZiBfX25hbWVfXz09J19fbWFpbl9fJzptYWluKCkK',validate=True)
+          if hashlib.sha256(raw).hexdigest() != '67b6f1667f19509359750a3aebd43c2feb21d8145ba84876f67423f186ed8bab':raise SystemExit('Pinned helper refused')
+          with (root/'check.py').open('xb') as out:out.write(raw)
+          (root/'check.py').chmod(0o400)
+          PYCODE
+      - name: Verify existing recipient with dummy bytes only
+        env:
+          SPAMBACK_SOURCE_READONLY_DEPLOY_KEY: ${{ secrets.SPAMBACK_SOURCE_READONLY_DEPLOY_KEY }}
+        run: |
+          set +x
+          set -euo pipefail
+          umask 077
+          export TMPDIR="$RUNNER_TEMP/spamback-age-compat"
+          export SPAMBACK_AGE_BINARY="$RUNNER_TEMP/spamback-age-compat/age"
+          python3 -I "$RUNNER_TEMP/spamback-age-compat/check.py"
+      - name: Remove temporary compatibility files
+        if: ${{ always() }}
+        run: |
+          set +x
+          set -euo pipefail
+          rm -rf -- "$RUNNER_TEMP/spamback-age-compat"
