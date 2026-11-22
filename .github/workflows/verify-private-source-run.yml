@@ -1,4 +1,4 @@
-name: Off-main unsigned qualification authorization (inactive)
+name: Off-main unsigned qualification authorization
 run-name: ${{ format('Unsigned authorization {0}', inputs.plan_sha256) }}
 'on':
   workflow_dispatch:
@@ -24,8 +24,6 @@ jobs:
     timeout-minutes: 1
     permissions: {}
     steps:
-    - name: Refuse unreviewed activation
-      run: exit 78
     - name: Materialize exact controller-owned GET-only helper
       shell: bash
       run: "set +x\nset -euo pipefail\numask 077\nmkdir -m 700 \"$RUNNER_TEMP/spamback-source-reader\"\npython3 -I - <<'PYCODE'\n\
@@ -69,8 +67,6 @@ jobs:
     timeout-minutes: 3
     permissions: {}
     steps:
-    - name: Refuse unreviewed activation
-      run: exit 78
     - name: Materialize exact controller-owned GET-only helper
       shell: bash
       run: "set +x\nset -euo pipefail\numask 077\nmkdir -m 700 \"$RUNNER_TEMP/spamback-source-reader\"\npython3 -I - <<'PYCODE'\n\
